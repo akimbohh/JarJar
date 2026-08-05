@@ -1,14 +1,47 @@
-# JarJar — One-command server setup (`jarjard init`)
+# JarJar — Server setup
 
-`jarjard init` turns a single plain-English description into a running,
-**optimized, always-on** modded Minecraft server plus the JarJar pack profile
-that drives it. The AI finds the modpack, creates version 1 of the profile, and
-the server ends up installed and booted. From there the normal request pipeline
-(the tray app + `jarjard serve`) edits the pack over its lifetime.
+The Linux box runs everything: Claude, the pack builder/provisioner, and the
+Minecraft server. Windows (or macOS/Linux) runs only the **desktop app**. There
+are two ways to set up a server; the first needs no command-typing beyond a
+single install line.
 
-This is one-time setup. The Minecraft server is meant to stay up: `init`
-configures it to auto-restart and boot on machine start. It is **not** a
-per-change cold boot — ongoing edits never re-provision the server.
+## A. App-driven setup (recommended)
+
+On the Linux box, run the one-command installer:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/akimbohh/JarJar/main/deploy/bootstrap.sh | sudo bash
+```
+
+It installs the daemon + dependencies (Java, Claude Code), starts `jarjard` in an
+**unconfigured** state, and prints a **server URL** and an **admin code**. That is
+the only thing you type on the server.
+
+Then, in the **JarJar desktop app**:
+
+1. Choose "Set up a server" and enter the URL + admin code.
+2. Describe the modpack you want and paste a Claude Code token
+   (get one on any machine with Claude Code: `claude setup-token`).
+3. Watch it build. The app calls the daemon's setup API, which runs the same
+   genesis → provision → build → boot pipeline as `jarjard init` below, streaming
+   progress back to the app. When it finishes, the server is up and the app shows
+   the dashboard.
+
+Under the hood the app uses these daemon endpoints (admin-authed):
+`GET /api/v1/admin/setup` (configured/running + live `steps[]`) and
+`POST /api/v1/admin/setup` (`{description, claude_token, memory_mb?, server_dir?,
+server_port?, allow_curseforge?, curseforge_key?}`). Progress also streams on the
+`GET /api/v1/events` feed as `setup_progress` events.
+
+## B. One-command CLI setup (`jarjard init`)
+
+`jarjard init` does the same thing from the shell — a single plain-English
+description turned into a running, **optimized, always-on** server plus pack
+version 1. Use it when you'd rather not use the app for setup, or to script it.
+
+This is one-time setup. The Minecraft server is meant to stay up: it is
+configured to auto-restart and boot on machine start. It is **not** a per-change
+cold boot — ongoing edits never re-provision the server.
 
 ## What it does, in order
 

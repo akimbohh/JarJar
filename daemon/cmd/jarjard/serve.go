@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/akimbohh/jarjar/daemon/internal/api"
+	"github.com/akimbohh/jarjar/daemon/internal/bootstrap"
 	"github.com/akimbohh/jarjar/daemon/internal/config"
 	"github.com/akimbohh/jarjar/daemon/internal/id"
 	"github.com/akimbohh/jarjar/daemon/internal/jobs"
@@ -64,8 +65,9 @@ func cmdServe(args []string) int {
 
 	selfExe, _ := os.Executable()
 	runner := jobs.New(cfg, st, log, selfExe, *cfgPath)
+	setup := bootstrap.NewRunner(cfg, *cfgPath, st, pk, log)
 
-	srv := api.New(cfg, st, packAPI{pk: pk}, runner, mc)
+	srv := api.New(cfg, st, packAPI{pk: pk}, runner, mc, setup)
 
 	// Background goroutines.
 	go runner.Run(ctx)
