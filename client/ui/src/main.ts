@@ -835,6 +835,16 @@ async function loadVersions() {
 // Top-level render + side-effect management
 // ===========================================================================
 
+// screenKey identifies which top-level screen a state maps to. The state_changed
+// handler uses it to avoid rebuilding a form screen (connect/wizard) on an
+// unchanged screen, which would wipe whatever the user is typing.
+function screenKey(s: UiState | null): "loading" | "connect" | "wizard" | "shell" {
+  if (!s) return "loading";
+  if (s.phase === "FirstRun") return "connect";
+  if (isAdmin(s) && !s.configured) return "wizard";
+  return "shell";
+}
+
 function render() {
   if (!state) {
     stopSetupPoll();
@@ -886,7 +896,12 @@ async function boot() {
       versions = null;
       versionsError = null;
     }
-    render();
+    // Only rebuild on a screen transition, or for the data-driven dashboard.
+    // Re-rendering the connect/wizard forms on an unchanged screen would wipe
+    // the field the user is typing in (and steal focus).
+    if (screenKey(prev) !== screenKey(state) || screenKey(state) === "shell") {
+      render();
+    }
   });
   await listen<Progress>("progress", (e) => {
     progress = e.payload;

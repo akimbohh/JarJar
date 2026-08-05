@@ -237,7 +237,8 @@ fn open_window(app: &AppHandle) {
     tauri::async_runtime::spawn(async move {
         for delay in [120u64, 350, 800] {
             tokio::time::sleep(Duration::from_millis(delay)).await;
-            core.emit_state().await;
+            // Force: a new webview needs the snapshot even if it hasn't changed.
+            core.emit_state_force().await;
             core.emit_feed().await;
         }
     });
