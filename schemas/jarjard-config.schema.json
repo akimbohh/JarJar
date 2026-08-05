@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jarjar.dev/schemas/jarjard-config.schema.json",
+  "title": "jarjard.toml (validated after TOML parse)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["server", "minecraft", "claude"],
+  "properties": {
+    "server": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "listen_addr": { "type": "string", "default": "0.0.0.0:25580" },
+        "public_url": { "type": ["string", "null"], "default": null, "description": "URL players reach the daemon at; informational, printed by `jarjard invite`." },
+        "tls_cert_file": { "type": ["string", "null"], "default": null },
+        "tls_key_file": { "type": ["string", "null"], "default": null },
+        "data_dir": { "type": "string", "default": "/var/lib/jarjar" }
+      }
+    },
+    "minecraft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["server_dir"],
+      "properties": {
+        "server_dir": { "type": "string", "description": "Live MC server directory, e.g. /opt/minecraft" },
+        "control": { "enum": ["systemd", "command"], "default": "systemd" },
+        "systemd_unit": { "type": "string", "default": "minecraft.service" },
+        "start_command": { "type": ["string", "null"], "default": null, "description": "Used when control = command" },
+        "stop_command": { "type": ["string", "null"], "default": null },
+        "rcon_addr": { "type": "string", "default": "127.0.0.1:25575" },
+        "rcon_password": { "type": "string", "default": "" },
+        "restart_policy": { "enum": ["immediate", "when_empty"], "default": "when_empty" },
+        "when_empty_timeout_minutes": { "type": "integer", "minimum": 1, "default": 720, "description": "Force restart after this long even if never empty." },
+        "boot_healthy_timeout_seconds": { "type": "integer", "minimum": 30, "default": 300 }
+      }
+    },
+    "claude": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "binary": { "type": "string", "default": "claude" },
+        "model": { "type": "string", "default": "sonnet", "description": "Passed to --model. Alias or full model ID." },
+        "token_file": { "type": "string", "default": "/var/lib/jarjar/secrets/claude-token" },
+        "max_turns": { "type": "integer", "minimum": 5, "default": 50 },
+        "timeout_minutes": { "type": "integer", "minimum": 2, "default": 20 },
+        "memory_max": { "type": "string", "default": "1536M", "description": "systemd-run MemoryMax for the worker+claude scope." }
+      }
+    },
+    "pipeline": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "require_approval": { "type": "boolean", "default": false, "description": "If true, every plan waits for admin approval. Low-confidence plans always do." },
+        "allow_curseforge": { "type": "boolean", "default": false },
+        "curseforge_api_key": { "type": ["string", "null"], "default": null }
+      }
+    }
+  }
+}

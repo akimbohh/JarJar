@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jarjar.dev/schemas/events.schema.json",
+  "title": "JarJar event (element of GET /api/v1/events response)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["seq", "type", "created_at", "payload"],
+  "properties": {
+    "seq": { "type": "integer", "minimum": 1 },
+    "type": { "enum": ["version_published", "request_updated", "server_status"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "payload": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "version_published" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["version", "summary"],
+            "properties": {
+              "version": { "type": "integer", "minimum": 1 },
+              "summary": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "request_updated" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["request_id", "status", "player_name", "text", "question", "error", "version"],
+            "properties": {
+              "request_id": { "type": "string" },
+              "status": { "enum": ["queued", "planning", "awaiting_clarification", "awaiting_approval", "materializing", "applying_server", "published", "failed", "rejected", "infeasible"] },
+              "player_name": { "type": "string" },
+              "text": { "type": "string" },
+              "question": { "type": ["string", "null"] },
+              "error": { "type": ["string", "null"] },
+              "version": { "type": ["integer", "null"] }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "server_status" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["state"],
+            "properties": {
+              "state": { "enum": ["running", "restarting", "down"] }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

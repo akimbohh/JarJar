@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jarjar.dev/schemas/manifest.schema.json",
+  "title": "JarJar version manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "pack", "version", "files"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "pack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "mc_version", "loader"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "mc_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$" },
+        "loader": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version"],
+          "properties": {
+            "id": { "enum": ["fabric", "neoforge", "forge", "quilt"] },
+            "version": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "version": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "created_at", "request_id", "git_commit", "summary", "changelog"],
+      "properties": {
+        "number": { "type": "integer", "minimum": 1 },
+        "created_at": { "type": "string", "format": "date-time" },
+        "request_id": { "type": ["string", "null"], "pattern": "^req_[0-9a-z]{26}$" },
+        "git_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "changelog": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "text"],
+            "properties": {
+              "kind": { "enum": ["added_mod", "removed_mod", "updated_mod", "config_changed", "server_setting", "other"] },
+              "text": { "type": "string", "minLength": 1, "maxLength": 500 }
+            }
+          }
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256", "size", "side", "kind"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+$"
+          },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "size": { "type": "integer", "minimum": 0 },
+          "side": { "enum": ["client", "server", "both"] },
+          "kind": { "enum": ["mod", "config", "script", "resource", "loader", "other"] }
+        }
+      }
+    }
+  }
+}

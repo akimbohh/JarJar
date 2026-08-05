@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jarjar.dev/schemas/client-state.schema.json",
+  "title": "JarJar tray-client local state (state.json)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "applied_version", "files"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "applied_version": { "type": ["integer", "null"], "minimum": 1 },
+    "files": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sha256", "size", "mtime_ms"],
+        "properties": {
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "size": { "type": "integer", "minimum": 0 },
+          "mtime_ms": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}
