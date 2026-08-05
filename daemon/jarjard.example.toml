@@ -1,0 +1,38 @@
+# JarJar daemon configuration. Copy to /etc/jarjar/jarjard.toml and edit.
+# Schema: schemas/jarjard-config.schema.json
+
+[server]
+listen_addr = "0.0.0.0:25580"
+# public_url is informational — printed by `jarjard invite` so players know
+# which URL to enter. Set it to how clients reach this daemon.
+public_url = "https://mc.example.com:25580"
+data_dir = "/var/lib/jarjar"
+# Optional built-in TLS (or terminate TLS at a reverse proxy / use a VPN):
+# tls_cert_file = "/etc/jarjar/tls/fullchain.pem"
+# tls_key_file  = "/etc/jarjar/tls/privkey.pem"
+
+[minecraft]
+server_dir = "/opt/minecraft"
+control = "systemd"                 # "systemd" or "command"
+systemd_unit = "minecraft.service"
+# For control = "command", set these instead of systemd_unit:
+# start_command = "/opt/minecraft/start.sh"
+# stop_command  = "/opt/minecraft/stop.sh"
+rcon_addr = "127.0.0.1:25575"
+rcon_password = "change-me"         # must match server.properties rcon.password
+restart_policy = "when_empty"       # "when_empty" or "immediate"
+when_empty_timeout_minutes = 720    # force a restart after this long if never empty
+boot_healthy_timeout_seconds = 300
+
+[claude]
+binary = "claude"                   # Claude Code CLI on PATH
+model = "sonnet"                    # alias or full model id passed to --model
+token_file = "/var/lib/jarjar/secrets/claude-token"   # output of `claude setup-token`
+max_turns = 50
+timeout_minutes = 20
+memory_max = "1536M"                # systemd-run MemoryMax for the worker+claude scope
+
+[pipeline]
+require_approval = false            # low-confidence plans always require approval
+allow_curseforge = false
+# curseforge_api_key = "..."        # required when allow_curseforge = true
