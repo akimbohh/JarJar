@@ -1,49 +1,35 @@
 name: Release
 
-# Produces platform artifacts on a version tag push (e.g. v0.1.0):
+# Produces platform artifacts for a version:
 #   - jarjard daemon binaries: linux/amd64, linux/arm64 (the daemon is Linux-only
 #     by design — it drives systemd + RCON)
 #   - tray-client installers: Windows (NSIS .exe), macOS (.dmg, universal),
-#     Linux (.AppImage + .deb)
-# All artifacts are attached to a GitHub Release for the tag.
+#     Linux (.AppImage + .deb), plus signed self-updater artifacts + latest.json
+#
+# Trigger either by pushing a v* tag, or manually (Actions → Release → Run
+# workflow) with the version tag as input — handy when tag pushes are blocked.
 
 on:
   push:
     tags:
       - "v*"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to build and release (e.g. v0.1.0)"
+        required: true
+        default: "v0.1.0"
 
 permissions:
   contents: write
 
-jobs:
-  daemon:
-    name: daemon ${{ matrix.goarch }}
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        goarch: [amd64, arm64]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.24"
-          cache-dependency-path: daemon/go.sum
-      - name: build
-        working-directory: daemon
-        env:
-          CGO_ENABLED: "0"
-          GOOS: linux
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          VER="${GITHUB_REF_NAME:-dev}"
-          go build -ldflags "-s -w -X main.version=${VER}" \
-            -o "jarjard-linux-${{ matrix.goarch }}" ./cmd/jarjard
-      - name: release upload
-        uses: softprops/action-gh-release@v2
-        with:
-          files: daemon/jarjard-linux-${{ matrix.goarch }}
+env:
+  # The release tag: the pushed tag, or the manual-dispatch input.
+  RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
+jobs:
+  # Client first: it creates the GitHub Release for RELEASE_TAG (and the tag
+  # itself on manual dispatch). The daemon job then uploads into that release.
   client:
     name: client ${{ matrix.name }}
     strategy:
@@ -81,17 +67,44 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Signs the self-updater artifacts. Set these repo secrets before the
-          # first tag: TAURI_SIGNING_PRIVATE_KEY (the minisign private key) and,
-          # if the key has a password, TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
+          # Signs the self-updater artifacts. Requires the repo secret
+          # TAURI_SIGNING_PRIVATE_KEY (and _PASSWORD only if the key has one).
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: client
-          tagName: ${{ github.ref_name }}
-          releaseName: "JarJar ${{ github.ref_name }}"
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: "JarJar ${{ env.RELEASE_TAG }}"
           # Publish (not draft) so the updater endpoint
           # /releases/latest/download/latest.json resolves.
           releaseDraft: false
           includeUpdaterJson: true
           args: ${{ matrix.args }}
+
+  daemon:
+    name: daemon ${{ matrix.goarch }}
+    needs: client
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: daemon/go.sum
+      - name: build
+        working-directory: daemon
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build -ldflags "-s -w -X main.version=${RELEASE_TAG}" \
+            -o "jarjard-linux-${{ matrix.goarch }}" ./cmd/jarjard
+      - name: release upload
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: daemon/jarjard-linux-${{ matrix.goarch }}
