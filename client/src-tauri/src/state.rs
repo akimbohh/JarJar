@@ -171,6 +171,14 @@ pub struct UiState {
     pub error: Option<String>,
     pub in_flight_request: Option<InFlightRequest>,
     pub min_client_notice: Option<String>,
+    /// The joined player's role ("admin" or "player"); drives whether the admin
+    /// setup wizard is reachable. Empty until a config is loaded.
+    pub role: String,
+    /// True once the server has an imported pack (a published version exists).
+    /// Admins see the setup wizard while this is false.
+    pub configured: bool,
+    /// MC version + loader summary for the dashboard header (e.g. "1.20.1 · fabric").
+    pub loader_summary: Option<String>,
     pub settings: SettingsView,
 }
 
@@ -187,6 +195,9 @@ impl UiState {
             error: None,
             in_flight_request: None,
             min_client_notice: None,
+            role: String::new(),
+            configured: false,
+            loader_summary: None,
             settings: SettingsView {
                 server_url: String::new(),
                 player_name: None,
