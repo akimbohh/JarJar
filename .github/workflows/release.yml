@@ -81,9 +81,17 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the self-updater artifacts. Set these repo secrets before the
+          # first tag: TAURI_SIGNING_PRIVATE_KEY (the minisign private key) and,
+          # if the key has a password, TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: client
           tagName: ${{ github.ref_name }}
           releaseName: "JarJar ${{ github.ref_name }}"
-          releaseDraft: true
+          # Publish (not draft) so the updater endpoint
+          # /releases/latest/download/latest.json resolves.
+          releaseDraft: false
+          includeUpdaterJson: true
           args: ${{ matrix.args }}

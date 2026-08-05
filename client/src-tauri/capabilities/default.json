@@ -12,6 +12,8 @@
     "core:window:allow-set-focus",
     "core:event:default",
     "notification:default",
-    "dialog:default"
+    "dialog:default",
+    "updater:default",
+    "process:default"
   ]
 }

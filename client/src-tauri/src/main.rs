@@ -20,7 +20,9 @@ use tauri::{
     AppHandle, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder, Wry,
 };
 use tauri_plugin_autostart::{ManagerExt, MacosLauncher};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_updater::UpdaterExt;
 
 use api::DaemonClient;
 use state::{
@@ -80,6 +82,11 @@ fn main() {
         ))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
+        // Self-updater: pulls signed release artifacts from GitHub (see
+        // tauri.conf.json `plugins.updater`). Paired with the process plugin,
+        // which provides the relaunch (`app.restart()`) after an install.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(core.clone())
         .invoke_handler(tauri::generate_handler![
             send_request,
@@ -98,10 +105,13 @@ fn main() {
                 .enabled(false)
                 .build(app)?;
             let start_i = MenuItemBuilder::with_id("start", "Start Minecraft").build(app)?;
+            let check_updates_i =
+                MenuItemBuilder::with_id("check_updates", "Check for updates").build(app)?;
             let quit_i = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
             let menu = MenuBuilder::new(app)
                 .items(&[&open_i, &apply_i, &start_i])
                 .separator()
+                .item(&check_updates_i)
                 .item(&quit_i)
                 .build()?;
 
@@ -131,6 +141,13 @@ fn main() {
                                 notify(app, "JarJar", &format!("Couldn't start Minecraft: {}", e));
                             }
                         }
+                        "check_updates" => {
+                            // Manual check: report both "up to date" and errors.
+                            let handle = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                run_update_check(handle, true).await;
+                            });
+                        }
                         "quit" => app.exit(0),
                         _ => {}
                     }
@@ -157,6 +174,15 @@ fn main() {
             let loop_core = core.clone();
             tauri::async_runtime::spawn(async move {
                 background_loop(loop_core).await;
+            });
+
+            // Check for an app update once, shortly after startup. Silent on
+            // "no update available"; failures (e.g. offline) are logged only so
+            // they never disturb the rest of the app.
+            let update_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                run_update_check(update_handle, false).await;
             });
 
             Ok(())
@@ -213,6 +239,92 @@ fn notify(app: &AppHandle, title: &str, body: &str) {
         .title(title)
         .body(body)
         .show();
+}
+
+// ---------------------------------------------------------------------------
+// Self-updater (Tauri v2 updater plugin)
+// ---------------------------------------------------------------------------
+
+/// Check GitHub for a newer app release and, if one exists, download + install
+/// it and relaunch. Runs entirely off the UI thread (called from a spawned
+/// task) so a slow or failing check never blocks the app.
+///
+/// `manual` distinguishes the tray-triggered check from the silent startup one:
+/// - update found: always installs, shows a dialog, then restarts;
+/// - no update: only the manual check tells the user "you're on the latest";
+/// - error: logged always, surfaced in a dialog only on a manual check.
+async fn run_update_check(app: AppHandle, manual: bool) {
+    // `check()` needs the updater; if the plugin can't build (misconfig) we
+    // treat it as a soft error rather than panicking.
+    let updater = match app.updater() {
+        Ok(u) => u,
+        Err(e) => {
+            tracing::warn!("updater unavailable: {}", e);
+            if manual {
+                app.dialog()
+                    .message(format!("Couldn't check for updates: {}", e))
+                    .title("JarJar")
+                    .buttons(MessageDialogButtons::Ok)
+                    .blocking_show();
+            }
+            return;
+        }
+    };
+
+    match updater.check().await {
+        Ok(Some(update)) => {
+            // An update is available: download + install (progress callbacks are
+            // unused here — the tray flow is intentionally minimal).
+            match update
+                .download_and_install(|_chunk, _total| {}, || {})
+                .await
+            {
+                Ok(()) => {
+                    let version = update.version.clone();
+                    app.dialog()
+                        .message(format!(
+                            "JarJar was updated to {}. The app will now restart.",
+                            version
+                        ))
+                        .title("Update installed")
+                        .buttons(MessageDialogButtons::Ok)
+                        .blocking_show();
+                    // Relaunch into the freshly installed version.
+                    app.restart();
+                }
+                Err(e) => {
+                    tracing::warn!("update install failed: {}", e);
+                    if manual {
+                        app.dialog()
+                            .message(format!("Couldn't install the update: {}", e))
+                            .title("JarJar")
+                            .buttons(MessageDialogButtons::Ok)
+                            .blocking_show();
+                    }
+                }
+            }
+        }
+        Ok(None) => {
+            // Already current. Stay silent unless the user asked explicitly.
+            if manual {
+                app.dialog()
+                    .message("You're on the latest version.")
+                    .title("JarJar")
+                    .buttons(MessageDialogButtons::Ok)
+                    .blocking_show();
+            }
+        }
+        Err(e) => {
+            tracing::warn!("update check failed: {}", e);
+            if manual {
+                app.dialog()
+                    .message(format!("Couldn't check for updates: {}", e))
+                    .title("JarJar")
+                    .buttons(MessageDialogButtons::Ok)
+                    .blocking_show();
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
