@@ -308,6 +308,10 @@ pub struct AppCore {
 
     /// Handle for emitting events; set once during setup.
     app: StdMutex<Option<AppHandle>>,
+    /// Last state snapshot emitted, so `emit_state` can skip byte-identical
+    /// pushes (the background loop re-asserts FirstRun every 500ms, which would
+    /// otherwise rebuild the webview — and wipe whatever the user is typing).
+    last_state: StdMutex<Option<String>>,
     /// Tray "Apply update" menu item, toggled with state (set during setup).
     pub apply_item: StdMutex<Option<tauri::menu::MenuItem<tauri::Wry>>>,
 }
@@ -332,6 +336,7 @@ impl AppCore {
             applying: Mutex::new(false),
             app: StdMutex::new(None),
             apply_item: StdMutex::new(None),
+            last_state: StdMutex::new(None),
         })
     }
 
@@ -343,9 +348,31 @@ impl AppCore {
         self.app.lock().unwrap().clone()
     }
 
-    /// Push the current UI snapshot to the webview (and refresh the tray).
+    /// Push the current UI snapshot to the webview, skipping the emit when it is
+    /// byte-identical to the last one (the reconcile loop re-asserts the same
+    /// state on a timer; re-emitting would needlessly rebuild the webview).
     pub async fn emit_state(&self) {
         let snapshot = self.ui.lock().await.clone();
+        let json = serde_json::to_string(&snapshot).unwrap_or_default();
+        {
+            let mut last = self.last_state.lock().unwrap();
+            if last.as_deref() == Some(json.as_str()) {
+                return;
+            }
+            *last = Some(json);
+        }
+        if let Some(app) = self.app() {
+            use tauri::Emitter;
+            let _ = app.emit("state_changed", &snapshot);
+        }
+    }
+
+    /// Force a state emit regardless of dedupe, and refresh the dedupe cache.
+    /// Used when a freshly-created webview needs the current snapshot even if it
+    /// has not changed since the last emit.
+    pub async fn emit_state_force(&self) {
+        let snapshot = self.ui.lock().await.clone();
+        *self.last_state.lock().unwrap() = Some(serde_json::to_string(&snapshot).unwrap_or_default());
         if let Some(app) = self.app() {
             use tauri::Emitter;
             let _ = app.emit("state_changed", &snapshot);

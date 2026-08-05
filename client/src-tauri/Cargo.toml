@@ -1,6 +1,6 @@
 [package]
 name = "jarjar-client"
-version = "0.1.0"
+version = "0.3.1"
 description = "JarJar tray client"
 authors = ["JarJar"]
 edition = "2021"
