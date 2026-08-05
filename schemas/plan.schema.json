@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jarjar.dev/schemas/plan.schema.json",
+  "title": "JarJar AI plan (structured output of the headless planning run)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "status", "actions", "summary", "admin_notes", "confidence", "clarification_question"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "status": { "enum": ["ok", "needs_clarification", "infeasible"] },
+    "actions": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "platform", "project_id", "project_slug", "version_id", "reason"],
+            "properties": {
+              "type": { "const": "add_mod" },
+              "platform": { "enum": ["modrinth", "curseforge"] },
+              "project_id": { "type": "string", "minLength": 1 },
+              "project_slug": { "type": "string", "minLength": 1 },
+              "version_id": { "type": "string", "minLength": 1 },
+              "reason": { "type": "string", "minLength": 1, "maxLength": 500 }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "path", "reason"],
+            "properties": {
+              "type": { "const": "remove_mod" },
+              "path": { "type": "string", "pattern": "^mods/[^/]+\\.jar$" },
+              "reason": { "type": "string", "minLength": 1, "maxLength": 500 }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "platform", "project_id", "from_path", "version_id", "reason"],
+            "properties": {
+              "type": { "const": "update_mod" },
+              "platform": { "enum": ["modrinth", "curseforge"] },
+              "project_id": { "type": "string", "minLength": 1 },
+              "from_path": { "type": "string", "pattern": "^mods/[^/]+\\.jar$" },
+              "version_id": { "type": "string", "minLength": 1 },
+              "reason": { "type": "string", "minLength": 1, "maxLength": 500 }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "path", "description"],
+            "properties": {
+              "type": { "const": "config_edit" },
+              "path": { "type": "string", "minLength": 1, "maxLength": 512 },
+              "description": { "type": "string", "minLength": 1, "maxLength": 500 }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "key", "value"],
+            "properties": {
+              "type": { "const": "server_property" },
+              "key": { "type": "string", "pattern": "^[a-z0-9.-]+$" },
+              "value": { "type": "string", "maxLength": 200 }
+            }
+          }
+        ]
+      }
+    },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
+    "admin_notes": { "type": "string", "maxLength": 2000 },
+    "confidence": { "enum": ["high", "medium", "low"] },
+    "clarification_question": { "type": ["string", "null"], "maxLength": 500 }
+  }
+}
