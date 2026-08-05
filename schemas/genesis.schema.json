@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jarjar.dev/schemas/genesis.schema.json",
+  "title": "JarJar genesis plan — the AI's decision when creating a pack from a description",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "mc_version", "loader", "source", "pack_name", "summary"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "mc_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$" },
+    "loader": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "enum": ["fabric", "neoforge", "forge", "quilt"] },
+        "version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "source": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "platform", "project_id", "version_id"],
+          "properties": {
+            "type": { "const": "existing_pack" },
+            "platform": { "enum": ["modrinth", "curseforge"] },
+            "project_id": { "type": "string", "minLength": 1 },
+            "version_id": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "mods"],
+          "properties": {
+            "type": { "const": "scratch" },
+            "mods": {
+              "type": "array",
+              "maxItems": 60,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["platform", "project_id", "project_slug", "version_id"],
+                "properties": {
+                  "platform": { "enum": ["modrinth", "curseforge"] },
+                  "project_id": { "type": "string", "minLength": 1 },
+                  "project_slug": { "type": "string", "minLength": 1 },
+                  "version_id": { "type": "string", "minLength": 1 }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "pack_name": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 1000 }
+  }
+}
