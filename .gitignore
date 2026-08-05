@@ -1,0 +1,21 @@
+# Go
+/daemon/jarjard
+*.test
+
+# Rust / Tauri
+/client/src-tauri/target/
+Cargo.lock.orig
+
+# Node
+node_modules/
+/client/ui/dist/
+/client/dist/
+
+# Runtime data (never commit a live pack store or db)
+/var/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# OS
+.DS_Store

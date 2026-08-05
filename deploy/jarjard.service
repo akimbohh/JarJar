@@ -1,0 +1,29 @@
+[Unit]
+Description=JarJar daemon (AI-driven modpack manager)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jarjar
+Group=jarjar
+ExecStart=/usr/local/bin/jarjard serve --config /etc/jarjar/jarjard.toml
+Restart=on-failure
+RestartSec=5
+
+# Resident daemon stays tiny; heavy work runs in transient worker scopes.
+MemoryHigh=128M
+MemoryMax=256M
+
+# Allow the daemon to spawn systemd-run transient scopes for workers and to
+# control the Minecraft unit.
+Delegate=yes
+
+# Hardening (relax if your setup needs more access).
+NoNewPrivileges=yes
+ProtectSystem=full
+ReadWritePaths=/var/lib/jarjar /opt/minecraft
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
