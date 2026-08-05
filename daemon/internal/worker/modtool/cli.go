@@ -115,6 +115,47 @@ func RunCLI(args []string, out, errOut io.Writer) int {
 		}
 		return emit(map[string]any{"versions": versions})
 
+	case "packsearch":
+		fs := flag.NewFlagSet("packsearch", flag.ContinueOnError)
+		fs.SetOutput(errOut)
+		mc := fs.String("mc-version", pc.MCVersion, "")
+		loader := fs.String("loader", pc.Loader.ID, "")
+		limit := fs.Int("limit", 8, "")
+		if err := fs.Parse(rest); err != nil {
+			return 1
+		}
+		if fs.NArg() < 1 {
+			return fail("usage: modtool packsearch <query>")
+		}
+		results, err := reg.PackSearch(ctx, fs.Arg(0), *mc, *loader, *limit)
+		if err != nil {
+			return fail(err.Error())
+		}
+		return emit(map[string]any{"results": results})
+
+	case "packversions":
+		fs := flag.NewFlagSet("packversions", flag.ContinueOnError)
+		fs.SetOutput(errOut)
+		mc := fs.String("mc-version", pc.MCVersion, "")
+		loader := fs.String("loader", pc.Loader.ID, "")
+		limit := fs.Int("limit", 5, "")
+		var pos []string
+		for _, a := range rest {
+			if len(a) > 0 && a[0] == '-' {
+				continue
+			}
+			pos = append(pos, a)
+		}
+		fs.Parse(rest)
+		if len(pos) < 2 {
+			return fail("usage: modtool packversions <platform> <project_id>")
+		}
+		versions, err := reg.PackVersions(ctx, pos[0], pos[1], *mc, *loader, *limit)
+		if err != nil {
+			return fail(err.Error())
+		}
+		return emit(map[string]any{"versions": versions})
+
 	case "installed":
 		return emitInstalled(ctx, reg, emit, fail)
 

@@ -35,6 +35,8 @@ func main() {
 	case "modtool":
 		// The model's registry window; prints JSON to stdout.
 		code = modtool.RunCLI(args, os.Stdout, os.Stderr)
+	case "init":
+		code = cmdInit(args)
 	case "import":
 		code = cmdImport(args)
 	case "invite":
@@ -59,9 +61,10 @@ func usage() {
 	fmt.Fprint(os.Stderr, `jarjard — JarJar server daemon
 
 usage:
+  jarjard init    --description "..." [flags]     one-time setup: plan, provision, build, boot an optimized server
   jarjard serve   [--config PATH]                 run the resident daemon
   jarjard worker  --job ID [--config PATH]        run one pipeline job (spawned by serve)
-  jarjard modtool <search|project|versions|installed> ...   registry query (JSON)
+  jarjard modtool <search|project|versions|packsearch|packversions|installed> ...   registry query (JSON)
   jarjard import  PACKFILE [--name NAME] [--config PATH]    import a .mrpack / CurseForge zip as version 1
   jarjard invite  [--role player|admin] [--config PATH]     mint an invite code
   jarjard rollback --to N [--config PATH]         roll the pack back to version N

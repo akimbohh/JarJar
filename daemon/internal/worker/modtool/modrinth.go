@@ -26,8 +26,22 @@ type mrHit struct {
 	ServerSide  string `json:"server_side"`
 }
 
+// modrinthFacets builds a Modrinth facet array for the given project type,
+// including the mc/loader facets only when they are set (genesis search runs
+// before the loader/version are chosen, so they may be empty).
+func modrinthFacets(projectType, mc, loader string) string {
+	parts := []string{fmt.Sprintf(`["project_type:%s"]`, projectType)}
+	if loader != "" {
+		parts = append(parts, fmt.Sprintf(`["categories:%s"]`, loaderCategory(loader)))
+	}
+	if mc != "" {
+		parts = append(parts, fmt.Sprintf(`["versions:%s"]`, mc))
+	}
+	return "[" + strings.Join(parts, ",") + "]"
+}
+
 func (r *Registry) modrinthSearch(ctx context.Context, query, mc, loader string, limit int) ([]SearchResult, error) {
-	facets := fmt.Sprintf(`[["project_type:mod"],["categories:%s"],["versions:%s"]]`, loaderCategory(loader), mc)
+	facets := modrinthFacets("mod", mc, loader)
 	u := fmt.Sprintf("%s/search?query=%s&facets=%s&limit=%d",
 		modrinthBase, url.QueryEscape(query), url.QueryEscape(facets), limit)
 	var resp mrSearchResponse
