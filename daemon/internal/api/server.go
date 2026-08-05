@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/akimbohh/jarjar/daemon/internal/bootstrap"
 	"github.com/akimbohh/jarjar/daemon/internal/config"
 	"github.com/akimbohh/jarjar/daemon/internal/store"
 )
@@ -75,24 +76,34 @@ type MCStatus interface {
 	State(ctx context.Context) string
 }
 
+// Setup is the app-driven one-time setup surface (internal/bootstrap.Runner).
+type Setup interface {
+	// Status returns configured/running state plus live progress.
+	Status(ctx context.Context) bootstrap.SetupStatus
+	// Start kicks off a setup run in the background.
+	Start(ctx context.Context, req bootstrap.SetupRequest) error
+}
+
 type Server struct {
 	cfg      config.Config
 	store    *store.Store
 	pack     Pack
 	jobs     Jobs
 	mc       MCStatus
+	setup    Setup
 	limiter  *rateLimiter
 	mux      *http.ServeMux
 	diskFree func(path string) uint64
 }
 
-func New(cfg config.Config, st *store.Store, pk Pack, jb Jobs, mc MCStatus) *Server {
+func New(cfg config.Config, st *store.Store, pk Pack, jb Jobs, mc MCStatus, setup Setup) *Server {
 	s := &Server{
 		cfg:      cfg,
 		store:    st,
 		pack:     pk,
 		jobs:     jb,
 		mc:       mc,
+		setup:    setup,
 		limiter:  newRateLimiter(60, time.Minute),
 		diskFree: diskFreeBytes,
 	}
@@ -119,6 +130,7 @@ func (s *Server) routes() {
 	mux.Handle("POST /api/v1/requests/{id}/answer", s.auth(store.RolePlayer, s.handleAnswer))
 
 	mux.Handle("GET /api/v1/pack/current", s.auth(store.RolePlayer, s.handlePackCurrent))
+	mux.Handle("GET /api/v1/pack/mods", s.auth(store.RolePlayer, s.handlePackMods))
 	mux.Handle("GET /api/v1/pack/manifests/{n}", s.auth(store.RolePlayer, s.handleManifest))
 	mux.Handle("GET /api/v1/blobs/{sha}", s.authNoLimit(store.RolePlayer, s.handleBlob))
 	mux.Handle("HEAD /api/v1/blobs/{sha}", s.authNoLimit(store.RolePlayer, s.handleBlob))
@@ -134,6 +146,8 @@ func (s *Server) routes() {
 	mux.Handle("POST /api/v1/admin/requests/{id}/reject", s.auth(store.RoleAdmin, s.handleReject))
 	mux.Handle("POST /api/v1/admin/rollback", s.auth(store.RoleAdmin, s.handleRollback))
 	mux.Handle("GET /api/v1/admin/status", s.auth(store.RoleAdmin, s.handleAdminStatus))
+	mux.Handle("GET /api/v1/admin/setup", s.auth(store.RoleAdmin, s.handleGetSetup))
+	mux.Handle("POST /api/v1/admin/setup", s.auth(store.RoleAdmin, s.handleStartSetup))
 
 	s.mux = mux
 }

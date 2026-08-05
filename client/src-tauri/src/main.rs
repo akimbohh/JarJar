@@ -59,6 +59,7 @@ fn main() {
             let mut ui = core.ui.lock().await;
             ui.phase = Phase::Reconciling;
             ui.pack_name = cfg.server_name.clone();
+            ui.role = cfg.role.clone();
             ui.settings = SettingsView {
                 server_url: cfg.server_url.clone(),
                 player_name: Some(cfg.player_name.clone()),
@@ -93,7 +94,15 @@ fn main() {
             answer_question,
             apply_update,
             save_settings,
-            start_minecraft
+            start_minecraft,
+            get_setup_status,
+            start_setup,
+            get_mods,
+            list_versions,
+            get_request,
+            rollback,
+            create_invite,
+            refresh
         ])
         .setup(move |app| {
             let core = core_for_setup;
@@ -212,9 +221,11 @@ fn open_window(app: &AppHandle) {
     }
     let res = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .title("JarJar")
-        .inner_size(380.0, 560.0)
-        .min_inner_size(320.0, 480.0)
+        .inner_size(1100.0, 760.0)
+        .min_inner_size(880.0, 600.0)
         .resizable(true)
+        .maximizable(true)
+        .decorations(true)
         .build();
     if let Err(e) = res {
         tracing::error!("failed to create window: {}", e);
@@ -513,6 +524,16 @@ async fn reconcile(core: &AppCore, cfg: &Config) -> anyhow::Result<()> {
         ui.phase = phase;
         ui.connection = Connection::Ok;
         ui.pack_name = current.pack.name.clone();
+        ui.role = cfg.role.clone();
+        ui.configured = current.version > 0;
+        ui.loader_summary = if current.pack.mc_version.is_empty() {
+            None
+        } else {
+            Some(format!(
+                "{} · {}",
+                current.pack.mc_version, current.pack.loader.id
+            ))
+        };
         ui.applied_version = applied;
         ui.current_version = if current.version == 0 {
             None
@@ -822,6 +843,7 @@ async fn save_settings(
             let mut ui = core.ui.lock().await;
             ui.phase = Phase::Reconciling;
             ui.pack_name = cfg.server_name.clone();
+            ui.role = cfg.role.clone();
             ui.settings = SettingsView {
                 server_url: cfg.server_url.clone(),
                 player_name: Some(cfg.player_name.clone()),
@@ -875,6 +897,92 @@ async fn save_settings(
 async fn start_minecraft(state: State<'_, SharedCore>) -> Result<(), String> {
     let core = state.inner().clone();
     start_launcher(&core).map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Admin setup + dashboard commands (invoke-and-render; the webview polls these)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+async fn get_setup_status(state: State<'_, SharedCore>) -> Result<api::SetupStatus, String> {
+    let core = state.inner().clone();
+    let cfg = cfg_snapshot(&core).await.ok_or("Not joined yet")?;
+    let client = client_for(&core, &cfg);
+    client.setup_status().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn start_setup(
+    payload: api::StartSetupPayload,
+    state: State<'_, SharedCore>,
+) -> Result<(), String> {
+    let core = state.inner().clone();
+    let cfg = cfg_snapshot(&core).await.ok_or("Not joined yet")?;
+    let client = client_for(&core, &cfg);
+    client.start_setup(&payload).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_mods(state: State<'_, SharedCore>) -> Result<Vec<api::ModEntry>, String> {
+    let core = state.inner().clone();
+    let cfg = cfg_snapshot(&core).await.ok_or("Not joined yet")?;
+    let client = client_for(&core, &cfg);
+    client.get_mods().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn list_versions(state: State<'_, SharedCore>) -> Result<Vec<api::VersionEntry>, String> {
+    let core = state.inner().clone();
+    let cfg = cfg_snapshot(&core).await.ok_or("Not joined yet")?;
+    let client = client_for(&core, &cfg);
+    client.list_versions(50).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_request(
+    request_id: String,
+    state: State<'_, SharedCore>,
+) -> Result<api::RequestObject, String> {
+    let core = state.inner().clone();
+    let cfg = cfg_snapshot(&core).await.ok_or("Not joined yet")?;
+    let client = client_for(&core, &cfg);
+    client
+        .get_request(&request_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn rollback(to_version: u64, state: State<'_, SharedCore>) -> Result<(), String> {
+    let core = state.inner().clone();
+    let cfg = cfg_snapshot(&core).await.ok_or("Not joined yet")?;
+    let client = client_for(&core, &cfg);
+    client
+        .rollback(to_version)
+        .await
+        .map_err(|e| e.to_string())?;
+    // Refresh the feed/state so the new version shows once the job completes.
+    let _ = reconcile(&core, &cfg).await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn create_invite(state: State<'_, SharedCore>) -> Result<String, String> {
+    let core = state.inner().clone();
+    let cfg = cfg_snapshot(&core).await.ok_or("Not joined yet")?;
+    let client = client_for(&core, &cfg);
+    client.create_invite("player").await.map_err(|e| e.to_string())
+}
+
+/// Force a reconcile + state push. The setup wizard calls this once `configured`
+/// flips true so the app advances to the dashboard without waiting for an event.
+#[tauri::command]
+async fn refresh(state: State<'_, SharedCore>) -> Result<(), String> {
+    let core = state.inner().clone();
+    if let Some(cfg) = cfg_snapshot(&core).await {
+        let _ = reconcile(&core, &cfg).await;
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

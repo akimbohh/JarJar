@@ -39,7 +39,66 @@ export interface UiState {
   in_flight_request: InFlightRequest | null;
   // Non-null when the daemon requires a newer client than we are.
   min_client_notice: string | null;
+  // The joined player's role; "admin" unlocks the setup wizard + admin actions.
+  role: string;
+  // True once the server has an imported pack (a published version exists).
+  configured: boolean;
+  // "1.20.1 · fabric" style summary for the dashboard header, when known.
+  loader_summary: string | null;
   settings: Settings;
+}
+
+// --- Admin setup + dashboard payloads (returned by invoke commands) ---------
+
+export interface SetupStep {
+  phase: string;
+  message: string;
+  done: boolean;
+  error: string | null;
+  at: string | null;
+}
+
+export interface SetupPack {
+  name: string;
+  mc_version: string;
+  loader: { id: string; version: string };
+}
+
+export interface SetupStatus {
+  configured: boolean;
+  running: boolean;
+  phase: string;
+  steps: SetupStep[];
+  pack: SetupPack | null;
+  invite_code: string | null;
+  error: string;
+}
+
+export interface StartSetupPayload {
+  description: string;
+  claude_token: string;
+  memory_mb?: number;
+  server_dir?: string;
+  server_port?: number;
+  allow_curseforge?: boolean;
+  curseforge_key?: string;
+}
+
+export interface ModEntry {
+  name: string;
+  path: string;
+  side: string;
+  platform: string;
+  project_id: unknown;
+  version: string;
+}
+
+export interface VersionEntry {
+  number: number;
+  created_at: string;
+  summary: string;
+  request_id: string | null;
+  status: string | null;
 }
 
 export interface Progress {

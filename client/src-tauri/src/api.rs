@@ -5,9 +5,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::state::{Manifest, PackCurrent};
+use crate::state::{Manifest, PackCurrent, PackInfo};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
@@ -73,7 +73,7 @@ pub struct Health {
     pub mc_server: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RequestObject {
     pub id: String,
     #[allow(dead_code)]
@@ -92,14 +92,84 @@ pub struct RequestObject {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct VersionEntry {
     pub number: u64,
     pub created_at: String,
     pub summary: String,
-    #[allow(dead_code)]
     #[serde(default)]
     pub request_id: Option<String>,
+    /// Optional publish status ("published", "rolled_back", …). Not all daemon
+    /// builds return this; absent → None and the UI omits the badge.
+    #[serde(default)]
+    pub status: Option<String>,
+}
+
+// --- Admin setup (one-time server bootstrap) ---------------------------------
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SetupStep {
+    pub phase: String,
+    #[serde(default)]
+    pub message: String,
+    #[serde(default)]
+    pub done: bool,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub at: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SetupStatus {
+    pub configured: bool,
+    #[serde(default)]
+    pub running: bool,
+    #[serde(default)]
+    pub phase: String,
+    #[serde(default)]
+    pub steps: Vec<SetupStep>,
+    #[serde(default)]
+    pub pack: Option<PackInfo>,
+    #[serde(default)]
+    pub invite_code: Option<String>,
+    #[serde(default)]
+    pub error: String,
+}
+
+/// Body for `POST /admin/setup`. Optional fields are omitted when unset so the
+/// daemon applies its own defaults.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct StartSetupPayload {
+    pub description: String,
+    pub claude_token: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_mb: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_port: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_curseforge: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub curseforge_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ModEntry {
+    pub name: String,
+    #[serde(default)]
+    pub path: String,
+    #[serde(default)]
+    pub side: String,
+    #[serde(default)]
+    pub platform: String,
+    /// Left as an opaque value: some sources report a numeric project id, others
+    /// a slug/string. We pass it through untyped so decoding never fails.
+    #[serde(default)]
+    pub project_id: serde_json::Value,
+    #[serde(default)]
+    pub version: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -269,6 +339,57 @@ impl DaemonClient {
         }
         let w: Wrap = self.get_json(&format!("/versions?limit={}", limit)).await?;
         Ok(w.versions)
+    }
+
+    pub async fn get_request(&self, id: &str) -> Result<RequestObject, ApiError> {
+        self.get_json(&format!("/requests/{}", id)).await
+    }
+
+    // --- Admin setup + management ---
+
+    pub async fn setup_status(&self) -> Result<SetupStatus, ApiError> {
+        self.get_json("/admin/setup").await
+    }
+
+    /// Kick off the async server setup. Returns once the daemon has accepted the
+    /// job (202); progress is observed via `setup_status`.
+    pub async fn start_setup(&self, payload: &StartSetupPayload) -> Result<(), ApiError> {
+        let _ = self
+            .send(self.auth(self.client.post(self.url("/admin/setup")).json(payload)))
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_mods(&self) -> Result<Vec<ModEntry>, ApiError> {
+        #[derive(Deserialize)]
+        struct Wrap {
+            #[serde(default)]
+            mods: Vec<ModEntry>,
+        }
+        let w: Wrap = self.get_json("/pack/mods").await?;
+        Ok(w.mods)
+    }
+
+    pub async fn rollback(&self, to_version: u64) -> Result<(), ApiError> {
+        let body = serde_json::json!({ "to_version": to_version });
+        let _ = self
+            .send(self.auth(self.client.post(self.url("/admin/rollback")).json(&body)))
+            .await?;
+        Ok(())
+    }
+
+    /// Mint a fresh invite of the given role ("player" or "admin"); returns the code.
+    pub async fn create_invite(&self, role: &str) -> Result<String, ApiError> {
+        #[derive(Deserialize)]
+        struct Wrap {
+            invite_code: String,
+        }
+        let body = serde_json::json!({ "role": role });
+        let resp = self
+            .send(self.auth(self.client.post(self.url("/admin/invites")).json(&body)))
+            .await?;
+        let w: Wrap = resp.json().await.map_err(|e| ApiError::Decode(e.to_string()))?;
+        Ok(w.invite_code)
     }
 
     // --- Events (long-poll) ---

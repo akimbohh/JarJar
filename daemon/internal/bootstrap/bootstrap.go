@@ -58,7 +58,23 @@ type Options struct {
 	// systemd unit, so it is only honored when InstallSystemd is set).
 	Boot bool
 
+	// Store, when non-nil, is used instead of opening a new one (the daemon
+	// passes its already-open store so the API-driven setup shares it). When
+	// nil, Init opens and closes its own (the CLI path).
+	Store *store.Store
+	// Report, when non-nil, is called at each phase so callers (the setup API)
+	// can stream progress to the app.
+	Report func(Progress)
+
 	Log *slog.Logger
+}
+
+// Progress is one step of an Init run, streamed via Options.Report.
+type Progress struct {
+	Phase   string `json:"phase"`
+	Message string `json:"message"`
+	Done    bool   `json:"done"`  // the whole run finished successfully
+	Error   string `json:"error"` // non-empty if the run failed
 }
 
 // Result reports what Init produced.
@@ -82,6 +98,12 @@ func Init(ctx context.Context, o Options) (Result, error) {
 		o.Log = slog.Default()
 	}
 	log := o.Log
+	report := func(phase, msg string) {
+		log.Info("setup: "+phase, "msg", msg)
+		if o.Report != nil {
+			o.Report(Progress{Phase: phase, Message: msg})
+		}
+	}
 
 	cfg := o.Cfg
 	if cfg.Server.DataDir == "" {
@@ -92,27 +114,32 @@ func Init(ctx context.Context, o Options) (Result, error) {
 	}
 
 	pk := pack.New(cfg.Server.DataDir)
-	st, err := store.Open(filepath.Join(cfg.Server.DataDir, "db.sqlite"))
-	if err != nil {
-		return Result{}, fmt.Errorf("init: open store: %w", err)
+	st := o.Store
+	if st == nil {
+		opened, err := store.Open(filepath.Join(cfg.Server.DataDir, "db.sqlite"))
+		if err != nil {
+			return Result{}, fmt.Errorf("init: open store: %w", err)
+		}
+		defer opened.Close()
+		st = opened
 	}
-	defer st.Close()
 
 	if pk.Initialized(ctx) {
 		return Result{}, fmt.Errorf("init: a pack is already initialized in %s; refusing to re-init", cfg.Server.DataDir)
 	}
 
 	// 1. Genesis — the AI decides mc/loader and existing-pack-vs-scratch.
-	log.Info("genesis: planning pack from description")
+	report("genesis", "Asking the AI to design your modpack…")
 	plan, err := Genesis(ctx, cfg, o.Description)
 	if err != nil {
 		return Result{}, err
 	}
 	log.Info("genesis: plan ready", "pack", plan.PackName, "mc", plan.MCVersion,
 		"loader", plan.Loader.ID, "source", plan.Source.Type)
+	report("genesis", fmt.Sprintf("Designed %q — Minecraft %s on %s.", plan.PackName, plan.MCVersion, plan.Loader.ID))
 
 	// 2. Provision the server (loader install, EULA, server.properties, unit).
-	log.Info("provision: installing server", "dir", cfg.Minecraft.ServerDir)
+	report("provision", "Installing the Minecraft server and mod loader…")
 	prov, err := provision.Provision(ctx, provision.Options{
 		MCVersion:   plan.MCVersion,
 		Loader:      provision.Loader{ID: plan.Loader.ID, Version: plan.Loader.Version},
@@ -140,6 +167,7 @@ func Init(ctx context.Context, o Options) (Result, error) {
 	log.Info("wrote config", "path", o.ConfigPath)
 
 	// 3. Build pack version 1.
+	report("build", "Downloading mods and building version 1…")
 	reg := modtool.New(cfg.Pipeline.AllowCurseForge, cfg.Pipeline.CurseForgeAPIKey, userAgent)
 	switch plan.Source.Type {
 	case "existing_pack":
@@ -164,6 +192,7 @@ func Init(ctx context.Context, o Options) (Result, error) {
 		return Result{}, fmt.Errorf("init: seed server dir: %w", err)
 	}
 	log.Info("seeded server dir with server-side files", "dir", cfg.Minecraft.ServerDir)
+	report("seed", "Placed the pack's server-side files.")
 
 	res := Result{
 		Plan:                plan,
@@ -177,6 +206,7 @@ func Init(ctx context.Context, o Options) (Result, error) {
 
 	// 5. Install + boot the systemd service (needs root).
 	if o.InstallSystemd {
+		report("install", "Installing the always-on server service…")
 		unitPath := filepath.Join("/etc/systemd/system", prov.SystemdUnitName)
 		if err := installSystemdUnit(ctx, unitPath, prov.SystemdUnitContents); err != nil {
 			return res, fmt.Errorf("init: install systemd unit: %w", err)
@@ -185,6 +215,7 @@ func Init(ctx context.Context, o Options) (Result, error) {
 		log.Info("installed systemd unit", "path", unitPath)
 
 		if o.Boot {
+			report("boot", "Starting the server and waiting for it to come up…")
 			mc := mcserver.New(cfg.Minecraft)
 			if err := mc.Start(ctx); err != nil {
 				return res, fmt.Errorf("init: start server: %w", err)
@@ -204,6 +235,7 @@ func Init(ctx context.Context, o Options) (Result, error) {
 		return res, fmt.Errorf("init: create invite: %w", err)
 	}
 	res.InviteCode = inv.Code
+	report("done", fmt.Sprintf("%q is ready.", plan.PackName))
 	return res, nil
 }
 

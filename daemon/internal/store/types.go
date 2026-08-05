@@ -27,6 +27,7 @@ const (
 	EventVersionPublished = "version_published"
 	EventRequestUpdated   = "request_updated"
 	EventServerStatus     = "server_status"
+	EventSetupProgress    = "setup_progress"
 )
 
 type Player struct {
